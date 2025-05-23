@@ -1,6 +1,7 @@
 ﻿using System.Net.Mime;
 using Ardalis.ListStartupServices;
 using Azure.Identity;
+using Azure.Messaging.ServiceBus;
 using BlazorAdmin;
 using BlazorAdmin.Services;
 using Blazored.LocalStorage;
@@ -17,6 +18,7 @@ using Microsoft.eShopWeb.Infrastructure.Identity;
 using Microsoft.eShopWeb.Web;
 using Microsoft.eShopWeb.Web.Configuration;
 using Microsoft.eShopWeb.Web.HealthChecks;
+using Microsoft.Extensions.Azure;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -113,6 +115,33 @@ builder.Services.AddScoped<HttpService>();
 builder.Services.AddBlazorServices();
 
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+
+builder.Services.AddAzureClients(azure =>
+{
+    var serviceBusCredential = new ChainedTokenCredential(
+            new ManagedIdentityCredential(builder.Configuration["AzureServiceBus:ManagedIdentityClientId"]),
+            new DefaultAzureCredential());
+
+    azure.AddServiceBusClientWithNamespace(builder.Configuration["AzureServiceBus:FullyQualifiedNamespace"])
+    .WithCredential(serviceBusCredential)
+    .ConfigureOptions(options =>
+    {
+        options.RetryOptions.Mode = ServiceBusRetryMode.Exponential;
+        options.RetryOptions.Delay = TimeSpan.FromSeconds(1);
+        options.RetryOptions.MaxDelay = TimeSpan.FromSeconds(5);
+        options.RetryOptions.MaxRetries = 3;
+    });
+});
+builder.Services.AddSingleton(sp => sp.GetRequiredService<ServiceBusClient>().CreateSender(builder.Configuration["AzureServiceBus:QueueName"]));
+
+if (!string.IsNullOrWhiteSpace(baseUrlConfig?.DeliveryOrderProcessor))
+{
+    builder.Services.AddHttpClient(nameof(BaseUrlConfiguration.DeliveryOrderProcessor), client =>
+    {
+        client.BaseAddress = new Uri(baseUrlConfig.DeliveryOrderProcessor);
+        client.DefaultRequestHeaders.Add("x-functions-key", builder.Configuration["DeliveryOrderProcessorFnKey"]);
+    });
+}
 
 var app = builder.Build();
 
