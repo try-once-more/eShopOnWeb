@@ -24,14 +24,16 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddConsole();
 
-var azKeyVaultEndpoint = builder.Configuration["AZURE_KEY_VAULT_ENDPOINT"];
+var azKeyVaultEndpoint = builder.Configuration["AzureKeyVault:Endpoint"];
 if (builder.Environment.IsDevelopment() || builder.Environment.EnvironmentName == "Docker" || string.IsNullOrWhiteSpace(azKeyVaultEndpoint)){
     // Configure SQL Server (local)
     Microsoft.eShopWeb.Infrastructure.Dependencies.ConfigureServices(builder.Configuration, builder.Services);
 }
 else{
     // Configure SQL Server (prod)
-    var credential = new ChainedTokenCredential(new AzureDeveloperCliCredential(), new DefaultAzureCredential());
+    var credential = new ChainedTokenCredential(
+        new ManagedIdentityCredential(builder.Configuration["AzureKeyVault:IdentityClientId"]),
+        new DefaultAzureCredential());
     builder.Configuration.AddAzureKeyVault(new Uri(azKeyVaultEndpoint), credential);
     builder.Services.AddDbContext<CatalogContext>(c =>
     {
