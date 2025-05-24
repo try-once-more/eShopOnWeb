@@ -26,16 +26,19 @@ public class DeliveryOrderProcessor(ILogger<DeliveryOrderProcessor> logger, Cont
             if (!Validator.TryValidateObject(order, new ValidationContext(order), results, validateAllProperties: true))
                 return new BadRequestObjectResult(results);
 
-            logger.LogInformation($"Order {order.Id} received");
+            logger.LogInformation("Order {orderId} received", order.Id);
             await container.CreateItemAsync(order, new PartitionKey(order.CustomerId));
-            logger.LogInformation($"Order {order.Id} saved");
+            logger.LogInformation("Order {orderId} saved", order.Id);
 
             return new OkResult();
         }
         catch (Exception ex)
         {
             logger.LogError(ex, ex.Message);
-            return new ObjectResult($"Internal error: {ex.Message}") { StatusCode = StatusCodes.Status500InternalServerError };
+            return new ObjectResult($"Internal error: {ex.Message}")
+            { 
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
         }
     }
 }
@@ -44,15 +47,15 @@ file class Order : IValidatableObject
 {
     [Required]
     [JsonPropertyName("id")]
-    public string Id { get; init; }
+    public required string Id { get; init; }
 
     [Required]
     [JsonPropertyName("customerId")]
-    public string CustomerId { get; init; }
+    public required string CustomerId { get; init; }
 
     [Required]
     [JsonPropertyName("address")]
-    public Address Address { get; init; }
+    public required Address Address { get; init; }
 
     [Range(0, double.MaxValue)]
     [JsonPropertyName("totalAmount")]
@@ -61,7 +64,7 @@ file class Order : IValidatableObject
     [Required]
     [MinLength(1)]
     [JsonPropertyName("items")]
-    public List<OrderItem> Items { get; init; }
+    public required List<OrderItem> Items { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
@@ -92,22 +95,22 @@ file class Address
 {
     [Required]
     [JsonPropertyName("street")]
-    public string Street { get; init; }
+    public required string Street { get; init; }
 
     [Required]
     [JsonPropertyName("city")]
-    public string City { get; init; }
+    public required string City { get; init; }
 
     [Required]
     [JsonPropertyName("state")]
-    public string State { get; init; }
+    public required string State { get; init; }
 
     [Required]
     [JsonPropertyName("country")]
-    public string Country { get; init; }
+    public required string Country { get; init; }
 
     [Required]
     [JsonPropertyName("zipCode")]
-    public string ZipCode { get; init; }
+    public required string ZipCode { get; init; }
 }
 
