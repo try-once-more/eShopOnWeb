@@ -8,8 +8,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
 namespace OrderItemsReserver;
-
-public class OrderItemsReserver(BlobContainerClient blobContainer, NotificationClient logicAppsClient, ILogger<OrderItemsReserver> logger)
+public class OrderItemsReserver(BlobContainerClient blobContainer, NotificationService notificationService, ILogger<OrderItemsReserver> logger)
 {
     private static readonly JsonSerializerOptions _jsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -29,15 +28,15 @@ public class OrderItemsReserver(BlobContainerClient blobContainer, NotificationC
             if (!isValid)
                 throw new InvalidDataException($"Order validation failed: {string.Join("; ", validationResults.Select(vr => vr.ErrorMessage))}");
 
-            logger.LogInformation($"MessageId {messageId}, Order {order.Id} received");
+            logger.LogInformation("MessageId {messageId}, Order {orderId} received", messageId, order.Id);
             var blob = blobContainer.GetBlobClient($"Order_{order.Id}.json");
             await blob.UploadAsync(message.Body, overwrite: true);
-            logger.LogInformation($"MessageId {messageId}, Order {blob.Name} sent for reservation");
+            logger.LogInformation("MessageId {messageId}, Order {blobName} sent for reservation", messageId, blob.Name);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, ex.Message);
-            await logicAppsClient.NotifyAsync(messageId, ex);
+            await notificationService.NotifyAsync(messageId, ex);
             await messageActions.DeadLetterMessageAsync(message);
         }
     }

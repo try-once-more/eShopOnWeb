@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace OrderItemsReserver;
 
-public class NotificationClient(HttpClient httpClient, ILogger<NotificationClient> logger)
+public class NotificationService(HttpClient httpClient, ILogger<NotificationService> logger)
 {
     public async Task NotifyAsync(string messageId, Exception exception)
     {

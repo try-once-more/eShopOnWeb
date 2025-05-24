@@ -1,4 +1,5 @@
 ﻿using Azure.Core;
+using Azure.Identity;
 using Azure.Storage.Blobs;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.Azure;
@@ -21,14 +22,18 @@ var storageConfig = builder.Configuration
     .Get<AzureStorage>()
     ?? throw new InvalidOperationException($"Configuration section '{nameof(AzureStorage)}' is not configured.");
 
-var notificationUrl = builder.Configuration["NotificationUrl"]
-    ?? throw new InvalidOperationException($"NotificationUrl is not configured.");
+var notificationServiceUrl = builder.Configuration["NotificationServiceUrl"]
+    ?? throw new InvalidOperationException($"NotificationServiceUrl is not configured.");
 
 builder.Services.AddLogging();
-builder.Services.AddHttpClient<NotificationClient>(client => client.BaseAddress = new Uri(notificationUrl));
+builder.Services.AddHttpClient<NotificationService>(client => client.BaseAddress = new Uri(notificationServiceUrl));
 builder.Services.AddAzureClients(azure =>
 {
-    azure.AddBlobServiceClient(storageConfig.ConnectionString)
+    var credential = new ChainedTokenCredential(
+        new ManagedIdentityCredential(storageConfig.IdentityClientId),
+        new DefaultAzureCredential());
+    azure.AddBlobServiceClient(new Uri(storageConfig.BlobServiceUri))
+        .WithCredential(credential)
         .ConfigureOptions(options =>
         {
             options.Retry.Mode = storageConfig.RetryOptions.Mode;
@@ -52,7 +57,8 @@ await host.RunAsync();
 
 file class AzureStorage
 {
-    public required string ConnectionString { get; init; }
+    public required string BlobServiceUri { get; init; }
+    public required string IdentityClientId { get; init; }
     public required string Container { get; init; }
     public AzureStorageRetryOptions RetryOptions { get; init; } = new AzureStorageRetryOptions();
 }
