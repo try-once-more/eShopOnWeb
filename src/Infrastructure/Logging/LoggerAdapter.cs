@@ -1,4 +1,5 @@
-﻿using Microsoft.eShopWeb.ApplicationCore.Interfaces;
+﻿using System;
+using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.eShopWeb.Infrastructure.Logging;
@@ -19,5 +20,10 @@ public class LoggerAdapter<T> : IAppLogger<T>
     public void LogInformation(string message, params object[] args)
     {
         _logger.LogInformation(message, args);
+    }
+    
+    public void LogError(Exception exception, string message, params object[] args)
+    {
+        _logger.LogError(exception, message, args);
     }
 }

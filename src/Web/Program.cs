@@ -1,6 +1,7 @@
 ﻿using System.Net.Mime;
 using Ardalis.ListStartupServices;
 using Azure.Identity;
+using Azure.Messaging.ServiceBus;
 using BlazorAdmin;
 using BlazorAdmin.Services;
 using Blazored.LocalStorage;
@@ -17,27 +18,31 @@ using Microsoft.eShopWeb.Infrastructure.Identity;
 using Microsoft.eShopWeb.Web;
 using Microsoft.eShopWeb.Web.Configuration;
 using Microsoft.eShopWeb.Web.HealthChecks;
+using Microsoft.Extensions.Azure;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddConsole();
 
-if (builder.Environment.IsDevelopment() || builder.Environment.EnvironmentName == "Docker"){
+var azKeyVaultEndpoint = builder.Configuration["AzureKeyVault:Endpoint"];
+if (builder.Environment.IsDevelopment() || builder.Environment.EnvironmentName == "Docker" || string.IsNullOrWhiteSpace(azKeyVaultEndpoint)){
     // Configure SQL Server (local)
     Microsoft.eShopWeb.Infrastructure.Dependencies.ConfigureServices(builder.Configuration, builder.Services);
 }
 else{
     // Configure SQL Server (prod)
-    var credential = new ChainedTokenCredential(new AzureDeveloperCliCredential(), new DefaultAzureCredential());
-    builder.Configuration.AddAzureKeyVault(new Uri(builder.Configuration["AZURE_KEY_VAULT_ENDPOINT"] ?? ""), credential);
+    var credential = new ChainedTokenCredential(
+        new ManagedIdentityCredential(builder.Configuration["AzureKeyVault:IdentityClientId"]),
+        new DefaultAzureCredential());
+    builder.Configuration.AddAzureKeyVault(new Uri(azKeyVaultEndpoint), credential);
     builder.Services.AddDbContext<CatalogContext>(c =>
     {
-        var connectionString = builder.Configuration[builder.Configuration["AZURE_SQL_CATALOG_CONNECTION_STRING_KEY"] ?? ""];
+        var connectionString = builder.Configuration["ConnectionStrings:CatalogConnection"];
         c.UseSqlServer(connectionString, sqlOptions => sqlOptions.EnableRetryOnFailure());
     });
     builder.Services.AddDbContext<AppIdentityDbContext>(options =>
     {
-        var connectionString = builder.Configuration[builder.Configuration["AZURE_SQL_IDENTITY_CONNECTION_STRING_KEY"] ?? ""];
+        var connectionString = builder.Configuration["ConnectionStrings:IdentityConnection"];
         options.UseSqlServer(connectionString, sqlOptions => sqlOptions.EnableRetryOnFailure());
     });
 }
@@ -112,6 +117,33 @@ builder.Services.AddScoped<HttpService>();
 builder.Services.AddBlazorServices();
 
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+
+builder.Services.AddAzureClients(azure =>
+{
+    var serviceBusCredential = new ChainedTokenCredential(
+            new ManagedIdentityCredential(builder.Configuration["AzureServiceBus:ManagedIdentityClientId"]),
+            new DefaultAzureCredential());
+
+    azure.AddServiceBusClientWithNamespace(builder.Configuration["AzureServiceBus:FullyQualifiedNamespace"])
+    .WithCredential(serviceBusCredential)
+    .ConfigureOptions(options =>
+    {
+        options.RetryOptions.Mode = ServiceBusRetryMode.Exponential;
+        options.RetryOptions.Delay = TimeSpan.FromSeconds(1);
+        options.RetryOptions.MaxDelay = TimeSpan.FromSeconds(5);
+        options.RetryOptions.MaxRetries = 3;
+    });
+});
+builder.Services.AddSingleton(sp => sp.GetRequiredService<ServiceBusClient>().CreateSender(builder.Configuration["AzureServiceBus:QueueName"]));
+
+if (!string.IsNullOrWhiteSpace(baseUrlConfig?.DeliveryOrderProcessor))
+{
+    builder.Services.AddHttpClient(nameof(BaseUrlConfiguration.DeliveryOrderProcessor), client =>
+    {
+        client.BaseAddress = new Uri(baseUrlConfig.DeliveryOrderProcessor);
+        client.DefaultRequestHeaders.Add("x-functions-key", builder.Configuration["DeliveryOrderProcessorFnKey"]);
+    });
+}
 
 var app = builder.Build();
 

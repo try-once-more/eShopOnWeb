@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using BlazorShared.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.eShopWeb.ApplicationCore.Exceptions;
+using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 
 namespace Microsoft.eShopWeb.PublicApi.Middleware;
 
@@ -16,7 +17,7 @@ public class ExceptionMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext httpContext)
+    public async Task InvokeAsync(HttpContext httpContext, IAppLogger<ExceptionMiddleware> logger)
     {
         try
         {
@@ -24,6 +25,7 @@ public class ExceptionMiddleware
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "Unexpected error");
             await HandleExceptionAsync(httpContext, ex);        
         }
     }
